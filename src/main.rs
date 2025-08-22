@@ -1,5 +1,7 @@
 use clap::{arg, command, value_parser};
 use git2::Repository;
+use serde_yaml::{Mapping, Value};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 use url::Url;
@@ -83,14 +85,6 @@ fn main() {
         }
     }
 
-    if let Some(ppa) = matches.get_one::<String>("ppa") {
-        println!("Value for PPA: {ppa}");
-    }
-
-    if let Some(package) = matches.get_one::<String>("package") {
-        println!("Value for package: {package}");
-    }
-
     for (repo_key, repo_branch_key) in [
         ("snaprepo", "snaprepobranch"),
         ("rockrepo", "rockrepobranch"),
@@ -160,6 +154,71 @@ fn main() {
                     }
                 }
             }
+        }
+    }
+
+    if let Some(snap_repo) = matches.get_one::<Url>("snaprepo") {
+        if let Some(ppa) = matches.get_one::<String>("ppa") {
+            let formatted_repo_name = snap_repo
+                .as_str()
+                .split('/')
+                .last()
+                .unwrap()
+                .split('.')
+                .next()
+                .unwrap();
+            let snap_repo_path = Path::join(Path::new(TEMP_DIR), Path::new(formatted_repo_name));
+            let snap_file_path = snap_repo_path.join("snap/snapcraft.yaml");
+            if !snap_file_path.exists() {
+                eprintln!("Snap file not found at: {}", snap_file_path.display());
+                std::process::exit(1);
+            }
+            let snap_file_content = match fs::read_to_string(snap_file_path.clone()) {
+                Ok(content) => content,
+                Err(e) => {
+                    eprintln!("Error reading snap file: {}", e);
+                    std::process::exit(1);
+                }
+            };
+            let mut parsed_yaml: BTreeMap<String, Value> =
+                match serde_yaml::from_str(snap_file_content.as_str()) {
+                    Ok(parsed) => parsed,
+                    Err(e) => {
+                        eprintln!("Error parsing snap file: {}", e);
+                        std::process::exit(1);
+                    }
+                };
+            let package_repositories_map = match parsed_yaml.get_mut("package-repositories") {
+                Some(Value::Sequence(sequence)) => sequence,
+                _ => {
+                    eprintln!("package-repositories not found or not a mapping in the snap file");
+                    std::process::exit(1);
+                }
+            };
+            package_repositories_map.push(Value::Mapping(Mapping::from_iter(vec![
+                (
+                    Value::String("type".to_string()),
+                    Value::String("apt".to_string()),
+                ),
+                (
+                    Value::String("ppa".to_string()),
+                    Value::String(ppa.to_string()),
+                ),
+            ])));
+            let new_snap_file_content = match serde_yaml::to_string(&parsed_yaml) {
+                Ok(content) => content,
+                Err(e) => {
+                    eprintln!("Error converting YAML to string: {}", e);
+                    std::process::exit(1);
+                }
+            };
+            match fs::write(snap_file_path, new_snap_file_content) {
+                Ok(_) => {}
+                Err(e) => {
+                    eprintln!("Error writing snap file: {}", e);
+                    std::process::exit(1);
+                }
+            };
         }
     }
 }
