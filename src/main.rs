@@ -1,6 +1,6 @@
 use clap::{arg, command, value_parser};
 use git2::Repository;
-use serde_yaml::{Mapping, Value};
+use serde_yml::{Mapping, Value};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
@@ -181,7 +181,7 @@ fn main() {
                 }
             };
             let mut parsed_yaml: BTreeMap<String, Value> =
-                match serde_yaml::from_str(snap_file_content.as_str()) {
+                match serde_yml::from_str(snap_file_content.as_str()) {
                     Ok(parsed) => parsed,
                     Err(e) => {
                         eprintln!("Error parsing snap file: {}", e);
@@ -205,7 +205,7 @@ fn main() {
                     Value::String(ppa.to_string()),
                 ),
             ])));
-            let new_snap_file_content = match serde_yaml::to_string(&parsed_yaml) {
+            let new_snap_file_content = match serde_yml::to_string(&parsed_yaml) {
                 Ok(content) => content,
                 Err(e) => {
                     eprintln!("Error converting YAML to string: {}", e);
